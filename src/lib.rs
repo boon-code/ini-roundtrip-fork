@@ -31,7 +31,7 @@ let elements = [
     ini::Item::SectionEnd,
     ini::Item::Section{name: "SECTION", raw: "[SECTION]"},
     ini::Item::Comment{raw: ";this is a comment"},
-    ini::Item::Property{key: "Key", val: Some("Value"), raw: "Key = Value  "},
+    ini::Item::Property{key: "Key", val: Some("Value"), cmt: None, raw: "Key = Value  "},
     ini::Item::SectionEnd,
 ];
 
@@ -55,7 +55,7 @@ nonsense";
 let elements = [
     ini::Item::SectionEnd,
     ini::Item::Error("[SECTION"),
-    ini::Item::Property{key: "nonsense", val: None, raw: "nonsense"},
+    ini::Item::Property{key: "nonsense", val: None, cmt: None, raw: "nonsense"},
     ini::Item::SectionEnd,
 ];
 
@@ -85,6 +85,7 @@ No further processing of the input is done, e.g. if escape sequences are necessa
 
 #![no_std]
 
+use core::cmp::min;
 use core::fmt;
 use core::str;
 
@@ -157,16 +158,18 @@ pub enum Item<'a> {
     /// ```
     /// assert_eq!(
     ///     ini_roundtrip::Parser::new("Key=Value").next(),
-    ///     Some(ini_roundtrip::Item::Property{key: "Key", val: Some("Value"), raw: "Key=Value"}));
+    ///     Some(ini_roundtrip::Item::Property{key: "Key", val: Some("Value"), cmt: None, raw: "Key=Value"}));
     /// assert_eq!(
     ///     ini_roundtrip::Parser::new("Key").next(),
-    ///     Some(ini_roundtrip::Item::Property{key: "Key", val: None, raw: "Key"}));
+    ///     Some(ini_roundtrip::Item::Property{key: "Key", val: None, cmt: None, raw: "Key"}));
     /// ```
     Property {
         /// Trimmed key
         key: &'a str,
         /// Trimmed value (if any)
         val: Option<&'a str>,
+        /// Comment value (if any)
+        cmt: Option<&'a str>,
         /// Raw line
         raw: &'a str,
     },
@@ -199,8 +202,13 @@ pub enum Item<'a> {
     },
 }
 
-impl fmt::Display for Item<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Item<'_> {
+    fn fmt_with_comment(&self, f: &mut fmt::Formatter<'_>, comment_char: char) -> fmt::Result {
+        let comment_char = match comment_char {
+            '#' | ';' => comment_char,
+            _ => ';',
+        };
+
         match *self {
             Item::Error(error) => writeln!(f, "{error}"),
             Item::Section { name, raw: _ } => writeln!(f, "[{name}]"),
@@ -208,16 +216,24 @@ impl fmt::Display for Item<'_> {
             Item::Property {
                 key,
                 val: Some(value),
+                cmt: _,
                 raw: _,
             } => writeln!(f, "{key}={value}"),
             Item::Property {
                 key,
                 val: None,
+                cmt: _,
                 raw: _,
             } => writeln!(f, "{key}"),
-            Item::Comment { raw: comment } => writeln!(f, ";{comment}"),
+            Item::Comment { raw: comment } => writeln!(f, "{comment_char}{comment}"),
             Item::Blank { raw: _ } => f.write_str("\n"),
         }
+    }
+}
+
+impl fmt::Display for Item<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_comment(f, ';')
     }
 }
 
@@ -344,25 +360,39 @@ impl<'a> Iterator for Parser<'a> {
                             raw: from_utf8(&s[..eol_or_eq]),
                         });
                     }
+                    //TODO: check for cmt?
                     Some(Item::Property {
                         key,
                         val: None,
+                        cmt: None,
                         raw: from_utf8(&s[..eol_or_eq]),
                     })
                 } else {
                     // Key + value case
                     let val_start = &s[eol_or_eq + 1..];
 
-                    let i = parse::find_nl(val_start);
+                    //let i = parse::find_nl(val_start);
+                    // TODO: Don't do it in that dumb way:
+                    let i_nl = parse::find_nl(val_start);
+                    let i_c1 = parse::find_nl_chr(val_start, b';');
+                    let i_c2 = parse::find_nl_chr(val_start, b'#');
+                    let i_c = min(i_c1, i_c2);
+                    let i = min(i_nl, i_c);
                     let value = from_utf8(&val_start[..i]);
                     let value = trim(value);
 
-                    self.skip_ln(&val_start[i..]);
+                    let mut cmt = None;
+                    if i_c < i_nl {
+                        cmt = Some(from_utf8(&val_start[i_c..i_nl]));
+                    }
+
+                    self.skip_ln(&val_start[i_nl..]);
 
                     Some(Item::Property {
                         key,
                         val: Some(value),
-                        raw: from_utf8(&s[..eol_or_eq + i + 1]),
+                        cmt,
+                        raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
                     })
                 }
             }

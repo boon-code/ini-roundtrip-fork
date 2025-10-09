@@ -66,6 +66,7 @@ fn test_eos() {
             Item::Property {
                 key: "Key",
                 val: Some("Value"),
+                cmt: None,
                 raw: "Key=Value",
             },
             Item::SectionEnd,
@@ -78,6 +79,7 @@ fn test_eos() {
             Item::Property {
                 key: "Key",
                 val: Some("Value"),
+                cmt: None,
                 raw: "Key=Value",
             },
             Item::SectionEnd,
@@ -90,6 +92,7 @@ fn test_eos() {
             Item::Property {
                 key: "Key",
                 val: Some("Value"),
+                cmt: None,
                 raw: "Key=Value",
             },
             Item::SectionEnd,
@@ -102,6 +105,7 @@ fn test_eos() {
             Item::Property {
                 key: "Key",
                 val: Some("Value"),
+                cmt: None,
                 raw: "Key=Value",
             },
             Item::SectionEnd,
@@ -114,6 +118,7 @@ fn test_eos() {
             Item::Property {
                 key: "Action",
                 val: None,
+                cmt: None,
                 raw: "Action",
             },
             Item::SectionEnd,
@@ -126,6 +131,7 @@ fn test_eos() {
             Item::Property {
                 key: "Action",
                 val: None,
+                cmt: None,
                 raw: "Action",
             },
             Item::SectionEnd,
@@ -138,6 +144,7 @@ fn test_eos() {
             Item::Property {
                 key: "Action",
                 val: None,
+                cmt: None,
                 raw: "Action",
             },
             Item::SectionEnd,
@@ -150,6 +157,7 @@ fn test_eos() {
             Item::Property {
                 key: "Action",
                 val: None,
+                cmt: None,
                 raw: "Action",
             },
             Item::SectionEnd,
@@ -166,6 +174,7 @@ fn test_empty() {
             Item::Property {
                 key: "Key",
                 val: None,
+                cmt: None,
                 raw: "Key",
             },
             Item::SectionEnd,
@@ -178,6 +187,7 @@ fn test_empty() {
             Item::Property {
                 key: "Key",
                 val: Some(""),
+                cmt: None,
                 raw: "Key=",
             },
             Item::SectionEnd,
@@ -198,11 +208,13 @@ fn test_empty_strings() {
             Item::Property {
                 key: "",
                 val: Some(""),
+                cmt: None,
                 raw: "=",
             },
             Item::Property {
                 key: "",
                 val: Some(""),
+                cmt: None,
                 raw: " = ",
             },
             Item::Comment { raw: ";" },
@@ -210,16 +222,19 @@ fn test_empty_strings() {
             Item::Property {
                 key: "",
                 val: Some(""),
+                cmt: None,
                 raw: "= ",
             },
             Item::Property {
                 key: "",
                 val: Some(""),
+                cmt: None,
                 raw: " =",
             },
             Item::Property {
                 key: "",
                 val: Some(""),
+                cmt: None,
                 raw: "=",
             },
             Item::SectionEnd,
