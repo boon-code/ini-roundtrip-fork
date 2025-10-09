@@ -67,6 +67,28 @@ for (index, item) in ini::Parser::new(document).enumerate() {
 Lines starting with `[` but contain either no closing `]` or a closing `]` not followed by a newline are returned as [`Item::Error`].
 Lines missing a `=` are returned as [`Item::Property`] with `None` value. See below for more details.
 
+Added support for line comments:
+```
+use ini_roundtrip as ini;
+
+let document = "\
+[SECTION]
+;this is a comment
+Key = Value  # This is a line comment";
+
+let elements = [
+    ini::Item::SectionEnd,
+    ini::Item::Section{name: "SECTION", raw: "[SECTION]"},
+    ini::Item::Comment{raw: ";this is a comment"},
+    ini::Item::Property{key: "Key", val: Some("Value"), cmt: Some("# This is a line comment"), raw: "Key = Value  # This is a line comment"},
+    ini::Item::SectionEnd,
+];
+
+for (index, item) in ini::Parser::new(document).enumerate() {
+    assert_eq!(item, elements[index]);
+}
+```
+
 Format
 ------
 
