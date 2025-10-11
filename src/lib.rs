@@ -85,6 +85,8 @@ No further processing of the input is done, e.g. if escape sequences are necessa
 
 #![no_std]
 
+use core::cmp::max;
+use core::cmp::min;
 use core::fmt;
 use core::str;
 
@@ -281,6 +283,38 @@ impl<'a> Parser<'a> {
         self.skip_ln(&s[i..]);
         line
     }
+
+    fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize) {
+        let c1 = parse::find_nl_chr(slice, b'#');
+        let c2 = parse::find_nl_chr(slice, b':');
+        let c_start = min(c1, c2);
+        let maybe_nl = max(c1, c2);
+
+        let nl = match slice.get(maybe_nl) {
+            Some(b'\n') | Some(b'\r') | None => maybe_nl,
+            _ => parse::find_nl(&slice[maybe_nl..]) + maybe_nl,
+        };
+
+        (c_start, nl)
+    }
+
+    fn parse_key_with_cmt(slice: &[u8], eol_or_eq: usize) -> (bool, usize) {
+        let key_slice = &slice[..eol_or_eq];
+
+        let c1 = parse::find_nl_chr(key_slice, b'#');
+        let c2 = parse::find_nl_chr(key_slice, b':');
+        let c_start = min(c1, c2);
+
+        assert!(c_start <= eol_or_eq);
+
+        if c_start < eol_or_eq {
+            (true, c_start)
+        } else if slice.get(eol_or_eq) != Some(&b'=') {
+            (true, eol_or_eq)
+        } else {
+            (false, eol_or_eq)
+        }
+    }
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -334,9 +368,10 @@ impl<'a> Iterator for Parser<'a> {
             // Property
             _ => {
                 let eol_or_eq = parse::find_nl_chr(s, b'=');
-                let key = from_utf8(&s[..eol_or_eq]);
+                let (is_key_only, key_len)  = Self::parse_key_with_cmt(s, eol_or_eq);
+                let key = from_utf8(&s[..key_len]);
                 let key = trim(key);
-                if s.get(eol_or_eq) != Some(&b'=') {
+                if is_key_only {
                     // Key only case
                     self.skip_ln(&s[eol_or_eq..]);
                     if key.is_empty() {
@@ -353,16 +388,16 @@ impl<'a> Iterator for Parser<'a> {
                     // Key + value case
                     let val_start = &s[eol_or_eq + 1..];
 
-                    let i = parse::find_nl(val_start);
-                    let value = from_utf8(&val_start[..i]);
+                    let (i_val, i_nl) = Self::parse_value_with_cmt(val_start);
+                    let value = from_utf8(&val_start[..i_val]);
                     let value = trim(value);
 
-                    self.skip_ln(&val_start[i..]);
+                    self.skip_ln(&val_start[i_nl..]);
 
                     Some(Item::Property {
                         key,
                         val: Some(value),
-                        raw: from_utf8(&s[..eol_or_eq + i + 1]),
+                        raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
                     })
                 }
             }
