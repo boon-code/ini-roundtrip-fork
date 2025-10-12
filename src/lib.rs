@@ -223,6 +223,106 @@ impl fmt::Display for Item<'_> {
     }
 }
 
+struct EditedValueItem<'a> {
+    item: &'a Item<'a>,
+    new_value: &'a str,
+}
+
+impl fmt::Display for EditedValueItem<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.item {
+            Item::Section { name, raw } => {
+                if *name == self.new_value {
+                    writeln!(f, "{}", self.item)
+                } else {
+                    writeln!(f, "{}", raw)
+                }
+            }
+            Item::Property { key, val, raw } => match *val {
+                Some(value) => {
+                    if value == self.new_value {
+                        writeln!(f, "{raw}")
+                    } else {
+                        writeln!(f, "{} = {}", key, self.new_value)
+                    }
+                }
+                None => writeln!(f, "{} = {}", key, self.new_value),
+            },
+            Item::Error(_) => Ok(()),
+            _ => write!(f, "{}", self.item),
+        }
+    }
+}
+
+struct ValuePreserve<'a> {
+    pre: &'a [u8],
+    value: &'a str,
+    post: &'a [u8],
+}
+
+struct PropWithCmt<'a> {
+    key: &'a str,
+    val: Option<ValuePreserve<'a>>,
+    cmt: Option<&'a [u8]>,
+    raw: &'a str,
+    next: &'a [u8],
+}
+
+impl<'a> PropWithCmt<'a> {
+    pub fn parse(s: &'a [u8]) -> Self {
+        let eol_or_eq = parse::find_nl_chr(s, b'=');
+        let (is_key_only, key_len) = Parser::parse_key_with_cmt(s, eol_or_eq);
+        let key = from_utf8(&s[..key_len]);
+        let key = trim(key);
+        if is_key_only {
+            // Key only case
+            let next = &s[eol_or_eq..];
+            Self {
+                key,
+                val: None,
+                cmt: None, /* TODO: cmt */
+                raw: from_utf8(&s[..eol_or_eq]),
+                next,
+            }
+        } else {
+            // Key + value case
+            let val_start = &s[eol_or_eq + 1..];
+
+            let (i_val, i_nl) = Parser::parse_value_with_cmt(val_start);
+            let value = from_utf8(&val_start[..i_val]);
+            let value = trim(value);
+
+            let val = ValuePreserve {
+                pre: val_start, /* TODO */
+                value,
+                post: val_start, /* TODO */
+            };
+            let next = &val_start[i_nl..];
+
+            Self {
+                key,
+                val: Some(val),
+                cmt: None, /* TODO */
+                raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
+                next,
+            }
+        }
+    }
+
+    pub fn to_item(self) -> Item<'a> {
+        if self.val.is_none() && self.key.is_empty() {
+            Item::Blank { raw: self.raw }
+        } else {
+            let val = if let Some(val) = self.val {
+                Some(val.value)
+            } else {
+                None
+            };
+            Item::Property { key: self.key, val, raw: self.raw }
+        }
+    }
+}
+
 /// Ini streaming parser.
 ///
 /// The whole document must be available before parsing starts.
