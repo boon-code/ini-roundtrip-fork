@@ -23,6 +23,11 @@ impl<'a> ValuePreserve<'a> {
         Self::trim(value)
     }
 
+    pub fn trim_section_from_utf8(slice: &'a [u8]) -> Result<Self, ()> {
+        let value = from_utf8(slice);
+        Self::trim_section(value)
+    }
+
     fn trim(txt: &'a str) -> Self {
         let pat = |chr: char| chr.is_ascii_whitespace();
 
@@ -45,6 +50,48 @@ impl<'a> ValuePreserve<'a> {
             pre,
             value: trimmed,
             post,
+        }
+    }
+
+    fn trim_section(txt: &'a str) -> Result<Self, ()> {
+        let pat = |chr: char| chr.is_ascii_whitespace();
+
+        let trimmed_start = txt.trim_start_matches(pat);
+        let trimmed = trimmed_start.trim_end_matches(pat);
+
+        assert!(txt.len() >= trimmed_start.len());
+        assert!(trimmed_start.len() >= trimmed.len());
+
+        let first = trimmed.chars().next();
+        let last = trimmed.chars().last();
+
+        match (first, last) {
+            (Some('['), Some(']')) => {
+                let pre_len = txt.len() - trimmed_start.len() + 1;
+                let post_len = trimmed_start.len() - trimmed.len() + 1;
+                let trimmed = &trimmed[1..trimmed.len() - 1];
+
+                assert!(post_len <= txt.len());
+                assert!(pre_len + post_len + trimmed.len() == txt.len());
+
+                let val = Self::trim(&trimmed);
+
+                let pre_len = pre_len + val.pre.len();
+                let post_len = post_len + val.post.len();
+                let trimmed_name = val.value;
+
+                assert!(pre_len + post_len + trimmed_name.len() == txt.len());
+
+                let pre = &txt[..pre_len];
+                let post = &txt[(txt.len() - post_len)..];
+
+                Ok(Self {
+                    pre,
+                    value: trimmed_name,
+                    post,
+                })
+            }
+            _ => Err(()),
         }
     }
 }
@@ -184,6 +231,61 @@ impl<'a> fmt::Display for EditProp<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct SectionError<'a> {
+    pub error: &'a str,
+    pub next: &'a [u8],
+}
+
+pub struct SectionWithCmt<'a> {
+    pub name: ValuePreserve<'a>,
+    pub cmt: Option<&'a str>,
+    pub next: &'a [u8],
+    pub raw: &'a str,
+}
+
+impl<'a> SectionWithCmt<'a> {
+    pub fn parse(s: &'a [u8]) -> Result<Self, SectionError<'a>> {
+        let c1 = parse::find_nl_chr(s, b'#');
+        let c2 = parse::find_nl_chr(s, b';');
+        let c_start = min(c1, c2);
+        let maybe_nl = max(c1, c2);
+
+        let nl = match s.get(maybe_nl) {
+            Some(b'\n') | Some(b'\r') | None => maybe_nl,
+            _ => parse::find_nl(&s[maybe_nl..]) + maybe_nl,
+        };
+
+        let cmt = if c_start < nl {
+            let cmt = from_utf8(&s[c_start..nl]);
+            Some(cmt)
+        } else {
+            None
+        };
+
+        let next = &s[nl..];
+        match ValuePreserve::trim_section_from_utf8(&s[..c_start]) {
+            Ok(section) => Ok(Self {
+                name: section,
+                cmt,
+                next,
+                raw: from_utf8(&s[..nl]),
+            }),
+            Err(_) => Err(SectionError {
+                error: from_utf8(&s[..nl]),
+                next,
+            }),
+        }
+    }
+
+    pub fn to_item(self) -> Item<'a> {
+        Item::Section {
+            name: self.name.value,
+            raw: self.raw,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -286,5 +388,51 @@ mod tests {
 
         assert_eq!(line_out, &act);
         assert_eq!("\nnext".as_bytes(), p.next);
+    }
+
+    #[test]
+    fn test_parse_section_simple() {
+        let line = "[my name]";
+
+        let s = SectionWithCmt::parse(line.as_bytes()).unwrap();
+
+        assert_eq!("my name", s.name.value);
+        assert_eq!("[", s.name.pre);
+        assert_eq!("]", s.name.post);
+    }
+
+    #[test]
+    fn test_parse_section_start() {
+        let line = "[  my name]";
+
+        let s = SectionWithCmt::parse(line.as_bytes()).unwrap();
+
+        assert_eq!("my name", s.name.value);
+        assert_eq!("[  ", s.name.pre);
+        assert_eq!("]", s.name.post);
+    }
+
+    #[test]
+    fn test_parse_section_end() {
+        let line = "[my name  ]   ";
+
+        let s = SectionWithCmt::parse(line.as_bytes()).unwrap();
+
+        assert_eq!("my name", s.name.value);
+        assert_eq!("[", s.name.pre);
+        assert_eq!("  ]   ", s.name.post);
+    }
+
+    #[test]
+    fn test_parse_section_full() {
+        let cmt = "# asdjas []][;# bla";
+        let line_nocmt = "[ my name  ]   ";
+        let line = format!("{line_nocmt}{cmt}");
+
+        let s = SectionWithCmt::parse(line.as_bytes()).unwrap();
+
+        assert_eq!("my name", s.name.value);
+        assert_eq!("[ ", s.name.pre);
+        assert_eq!("  ]   ", s.name.post);
     }
 }
