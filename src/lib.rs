@@ -255,15 +255,31 @@ impl fmt::Display for EditedValueItem<'_> {
 }
 
 struct ValuePreserve<'a> {
-    pre: &'a [u8],
+    pre: &'a str,
     value: &'a str,
-    post: &'a [u8],
+    post: &'a str,
+}
+
+impl<'a> ValuePreserve<'a> {
+    pub fn trim_from_utf8(slice: &'a [u8]) -> Self {
+        let value = from_utf8(slice);
+        let value = trim(value);
+        Self {
+            pre: "",
+            value,
+            post: "",
+        }
+    }
+
+    pub fn format(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}{}", self.pre, self.value, self.post)
+    }
 }
 
 struct PropWithCmt<'a> {
     key: &'a str,
     val: Option<ValuePreserve<'a>>,
-    cmt: Option<&'a [u8]>,
+    cmt: Option<&'a str>,
     raw: &'a str,
     next: &'a [u8],
 }
@@ -271,7 +287,7 @@ struct PropWithCmt<'a> {
 impl<'a> PropWithCmt<'a> {
     pub fn parse(s: &'a [u8]) -> Self {
         let eol_or_eq = parse::find_nl_chr(s, b'=');
-        let (is_key_only, key_len) = Self::parse_key_with_cmt(s, eol_or_eq);
+        let (is_key_only, key_len, key_cmt) = Self::parse_key_with_cmt(s, eol_or_eq);
         let key = from_utf8(&s[..key_len]);
         let key = trim(key);
         if is_key_only {
@@ -280,7 +296,7 @@ impl<'a> PropWithCmt<'a> {
             Self {
                 key,
                 val: None,
-                cmt: None, /* TODO: cmt */
+                cmt: key_cmt,
                 raw: from_utf8(&s[..eol_or_eq]),
                 next,
             }
@@ -288,28 +304,21 @@ impl<'a> PropWithCmt<'a> {
             // Key + value case
             let val_start = &s[eol_or_eq + 1..];
 
-            let (i_val, i_nl) = Self::parse_value_with_cmt(val_start);
-            let value = from_utf8(&val_start[..i_val]);
-            let value = trim(value);
-
-            let val = ValuePreserve {
-                pre: val_start, /* TODO */
-                value,
-                post: val_start, /* TODO */
-            };
+            let (i_val, i_nl, cmt) = Self::parse_value_with_cmt(val_start);
+            let val = ValuePreserve::trim_from_utf8(&val_start[..i_val]);
             let next = &val_start[i_nl..];
 
             Self {
                 key,
                 val: Some(val),
-                cmt: None, /* TODO */
+                cmt,
                 raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
                 next,
             }
         }
     }
 
-    fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize) {
+    fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize, Option<&str>) {
         let c1 = parse::find_nl_chr(slice, b'#');
         let c2 = parse::find_nl_chr(slice, b':');
         let c_start = min(c1, c2);
@@ -320,10 +329,17 @@ impl<'a> PropWithCmt<'a> {
             _ => parse::find_nl(&slice[maybe_nl..]) + maybe_nl,
         };
 
-        (c_start, nl)
+        let cmt = if c_start < nl {
+            let cmt = from_utf8(&slice[c_start..nl - c_start]);
+            Some(cmt)
+        } else {
+            None
+        };
+
+        (c_start, nl, cmt)
     }
 
-    fn parse_key_with_cmt(slice: &[u8], eol_or_eq: usize) -> (bool, usize) {
+    fn parse_key_with_cmt(slice: &[u8], eol_or_eq: usize) -> (bool, usize, Option<&str>) {
         let key_slice = &slice[..eol_or_eq];
 
         let c1 = parse::find_nl_chr(key_slice, b'#');
@@ -333,11 +349,12 @@ impl<'a> PropWithCmt<'a> {
         assert!(c_start <= eol_or_eq);
 
         if c_start < eol_or_eq {
-            (true, c_start)
+            let cmt = from_utf8(&slice[c_start..eol_or_eq - c_start]);
+            (true, c_start, Some(cmt))
         } else if slice.get(eol_or_eq) != Some(&b'=') {
-            (true, eol_or_eq)
+            (true, eol_or_eq, None)
         } else {
-            (false, eol_or_eq)
+            (false, eol_or_eq, None)
         }
     }
 
@@ -350,7 +367,11 @@ impl<'a> PropWithCmt<'a> {
             } else {
                 None
             };
-            Item::Property { key: self.key, val, raw: self.raw }
+            Item::Property {
+                key: self.key,
+                val,
+                raw: self.raw,
+            }
         }
     }
 }
