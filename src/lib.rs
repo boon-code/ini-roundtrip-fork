@@ -254,29 +254,45 @@ impl fmt::Display for EditedValueItem<'_> {
     }
 }
 
-struct ValuePreserve<'a> {
-    pre: &'a str,
-    value: &'a str,
-    post: &'a str,
+pub struct ValuePreserve<'a> {
+    pub pre: &'a str,
+    pub value: &'a str,
+    pub post: &'a str,
+}
+
+impl<'a> fmt::Display for ValuePreserve<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}{}", self.pre, self.value, self.post)
+    }
 }
 
 impl<'a> ValuePreserve<'a> {
     pub fn trim_from_utf8(slice: &'a [u8]) -> Self {
         let value = from_utf8(slice);
-        let value = trim(value);
-        Self {
-            pre: "",
-            value,
-            post: "",
-        }
+        Self::trim(value)
     }
 
-    pub fn format(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}{}", self.pre, self.value, self.post)
+    fn trim(txt: &'a str) -> Self {
+        let pat = |chr: char| chr.is_ascii_whitespace();
+
+        let trimmed_start = txt.trim_start_matches(pat);
+        let trimmed = trimmed_start.trim_end_matches(pat);
+
+        let pre_len = txt.len() - trimmed_start.len();
+        let post_len = trimmed_start.len() - trimmed.len();
+
+        let pre = &txt[0..pre_len];
+        let post = &txt[post_len..];
+
+        Self {
+            pre,
+            value: trimmed,
+            post,
+        }
     }
 }
 
-struct PropWithCmt<'a> {
+pub struct PropWithCmt<'a> {
     key: &'a str,
     val: Option<ValuePreserve<'a>>,
     cmt: Option<&'a str>,
@@ -372,6 +388,16 @@ impl<'a> PropWithCmt<'a> {
                 val,
                 raw: self.raw,
             }
+        }
+    }
+
+    pub fn fmt_edit_value(&self, f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
+        let cmt = self.cmt.unwrap_or("");
+
+        if let Some(value) = self.val.as_ref() {
+            write!(f, "{}={}{}", self.key, value, cmt)
+        } else {
+            write!(f, "{}{}", self.key, cmt)
         }
     }
 }
