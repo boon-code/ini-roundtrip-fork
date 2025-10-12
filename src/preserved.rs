@@ -38,7 +38,7 @@ impl<'a> ValuePreserve<'a> {
         assert!(post_len <= txt.len());
         assert!(pre_len + post_len + trimmed.len() == txt.len());
 
-        let pre = &txt[0..pre_len];
+        let pre = &txt[..pre_len];
         let post = &txt[(txt.len() - post_len)..];
 
         Self {
@@ -92,7 +92,7 @@ impl<'a> PropWithCmt<'a> {
 
     fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize, Option<&str>) {
         let c1 = parse::find_nl_chr(slice, b'#');
-        let c2 = parse::find_nl_chr(slice, b':');
+        let c2 = parse::find_nl_chr(slice, b';');
         let c_start = min(c1, c2);
         let maybe_nl = max(c1, c2);
 
@@ -102,7 +102,7 @@ impl<'a> PropWithCmt<'a> {
         };
 
         let cmt = if c_start < nl {
-            let cmt = from_utf8(&slice[c_start..nl - c_start]);
+            let cmt = from_utf8(&slice[c_start..nl]);
             Some(cmt)
         } else {
             None
@@ -115,13 +115,13 @@ impl<'a> PropWithCmt<'a> {
         let key_slice = &slice[..eol_or_eq];
 
         let c1 = parse::find_nl_chr(key_slice, b'#');
-        let c2 = parse::find_nl_chr(key_slice, b':');
+        let c2 = parse::find_nl_chr(key_slice, b';');
         let c_start = min(c1, c2);
 
         assert!(c_start <= eol_or_eq);
 
         if c_start < eol_or_eq {
-            let cmt = from_utf8(&slice[c_start..eol_or_eq - c_start]);
+            let cmt = from_utf8(&slice[c_start..eol_or_eq]);
             (true, c_start, Some(cmt))
         } else if slice.get(eol_or_eq) != Some(&b'=') {
             (true, eol_or_eq, None)
@@ -147,18 +147,40 @@ impl<'a> PropWithCmt<'a> {
         }
     }
 
-    pub fn fmt_edit_value(&self, f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
-        if Some(value) == self.val.as_ref().map(|x| x.value) {
+    pub fn fmt_edit_value(&self, f: &mut fmt::Formatter<'_>, value: Option<&str>) -> fmt::Result {
+        if value == self.val.as_ref().map(|x| x.value) {
+            // no change necessary
             write!(f, "{}", self.raw)
         } else {
             let cmt = self.cmt.unwrap_or("");
 
-            if let Some(value) = self.val.as_ref() {
-                write!(f, "{}={}{}", self.key, value, cmt)
+            let (pre, post) = self
+                .val
+                .as_ref()
+                .map(|x| (x.pre, x.post))
+                .unwrap_or(("", ""));
+
+            if let Some(value) = value {
+                write!(f, "{}={pre}{}{post}{}", self.key, value, cmt)
             } else {
                 write!(f, "{}{}", self.key, cmt)
             }
         }
+    }
+
+    pub fn edit_value(&'a self, value: Option<&'a str>) -> EditProp<'a> {
+        EditProp { prop: self, value }
+    }
+}
+
+pub struct EditProp<'a> {
+    prop: &'a PropWithCmt<'a>,
+    value: Option<&'a str>,
+}
+
+impl<'a> fmt::Display for EditProp<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.prop.fmt_edit_value(f, self.value)
     }
 }
 
