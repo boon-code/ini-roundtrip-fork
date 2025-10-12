@@ -345,19 +345,15 @@ impl<'a> Iterator for Parser<'a> {
             Some(b'[') => {
                 if self.section_ended {
                     self.section_ended = false;
-                    let i = parse::find_nl(s);
-                    if s[i - 1] != b']' {
-                        let error = from_utf8(&s[..i]);
-                        self.skip_ln(&s[i..]);
-                        return Some(Item::Error(error));
+                    match preserved::SectionWithCmt::parse(s) {
+                        Ok(sec) => {
+                            self.skip_ln(sec.next);
+                            Some(sec.to_item())
+                        },
+                        Err(e) => {self.skip_ln(e.next);
+                            Some (Item::Error(e.error))
+                        },
                     }
-                    let section = from_utf8(&s[1..i - 1]);
-                    let section = trim(section);
-                    self.skip_ln(&s[i..]);
-                    Some(Item::Section {
-                        name: section,
-                        raw: from_utf8(&s[..i]),
-                    })
                 } else {
                     self.section_ended = true;
                     Some(Item::SectionEnd)
