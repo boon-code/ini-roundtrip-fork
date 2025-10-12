@@ -271,7 +271,7 @@ struct PropWithCmt<'a> {
 impl<'a> PropWithCmt<'a> {
     pub fn parse(s: &'a [u8]) -> Self {
         let eol_or_eq = parse::find_nl_chr(s, b'=');
-        let (is_key_only, key_len) = Parser::parse_key_with_cmt(s, eol_or_eq);
+        let (is_key_only, key_len) = Self::parse_key_with_cmt(s, eol_or_eq);
         let key = from_utf8(&s[..key_len]);
         let key = trim(key);
         if is_key_only {
@@ -288,7 +288,7 @@ impl<'a> PropWithCmt<'a> {
             // Key + value case
             let val_start = &s[eol_or_eq + 1..];
 
-            let (i_val, i_nl) = Parser::parse_value_with_cmt(val_start);
+            let (i_val, i_nl) = Self::parse_value_with_cmt(val_start);
             let value = from_utf8(&val_start[..i_val]);
             let value = trim(value);
 
@@ -306,6 +306,38 @@ impl<'a> PropWithCmt<'a> {
                 raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
                 next,
             }
+        }
+    }
+
+    fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize) {
+        let c1 = parse::find_nl_chr(slice, b'#');
+        let c2 = parse::find_nl_chr(slice, b':');
+        let c_start = min(c1, c2);
+        let maybe_nl = max(c1, c2);
+
+        let nl = match slice.get(maybe_nl) {
+            Some(b'\n') | Some(b'\r') | None => maybe_nl,
+            _ => parse::find_nl(&slice[maybe_nl..]) + maybe_nl,
+        };
+
+        (c_start, nl)
+    }
+
+    fn parse_key_with_cmt(slice: &[u8], eol_or_eq: usize) -> (bool, usize) {
+        let key_slice = &slice[..eol_or_eq];
+
+        let c1 = parse::find_nl_chr(key_slice, b'#');
+        let c2 = parse::find_nl_chr(key_slice, b':');
+        let c_start = min(c1, c2);
+
+        assert!(c_start <= eol_or_eq);
+
+        if c_start < eol_or_eq {
+            (true, c_start)
+        } else if slice.get(eol_or_eq) != Some(&b'=') {
+            (true, eol_or_eq)
+        } else {
+            (false, eol_or_eq)
         }
     }
 
@@ -383,38 +415,6 @@ impl<'a> Parser<'a> {
         self.skip_ln(&s[i..]);
         line
     }
-
-    fn parse_value_with_cmt(slice: &[u8]) -> (usize, usize) {
-        let c1 = parse::find_nl_chr(slice, b'#');
-        let c2 = parse::find_nl_chr(slice, b':');
-        let c_start = min(c1, c2);
-        let maybe_nl = max(c1, c2);
-
-        let nl = match slice.get(maybe_nl) {
-            Some(b'\n') | Some(b'\r') | None => maybe_nl,
-            _ => parse::find_nl(&slice[maybe_nl..]) + maybe_nl,
-        };
-
-        (c_start, nl)
-    }
-
-    fn parse_key_with_cmt(slice: &[u8], eol_or_eq: usize) -> (bool, usize) {
-        let key_slice = &slice[..eol_or_eq];
-
-        let c1 = parse::find_nl_chr(key_slice, b'#');
-        let c2 = parse::find_nl_chr(key_slice, b':');
-        let c_start = min(c1, c2);
-
-        assert!(c_start <= eol_or_eq);
-
-        if c_start < eol_or_eq {
-            (true, c_start)
-        } else if slice.get(eol_or_eq) != Some(&b'=') {
-            (true, eol_or_eq)
-        } else {
-            (false, eol_or_eq)
-        }
-    }
 }
 
 impl<'a> Iterator for Parser<'a> {
@@ -467,39 +467,9 @@ impl<'a> Iterator for Parser<'a> {
             }
             // Property
             _ => {
-                let eol_or_eq = parse::find_nl_chr(s, b'=');
-                let (is_key_only, key_len) = Self::parse_key_with_cmt(s, eol_or_eq);
-                let key = from_utf8(&s[..key_len]);
-                let key = trim(key);
-                if is_key_only {
-                    // Key only case
-                    self.skip_ln(&s[eol_or_eq..]);
-                    if key.is_empty() {
-                        return Some(Item::Blank {
-                            raw: from_utf8(&s[..eol_or_eq]),
-                        });
-                    }
-                    Some(Item::Property {
-                        key,
-                        val: None,
-                        raw: from_utf8(&s[..eol_or_eq]),
-                    })
-                } else {
-                    // Key + value case
-                    let val_start = &s[eol_or_eq + 1..];
-
-                    let (i_val, i_nl) = Self::parse_value_with_cmt(val_start);
-                    let value = from_utf8(&val_start[..i_val]);
-                    let value = trim(value);
-
-                    self.skip_ln(&val_start[i_nl..]);
-
-                    Some(Item::Property {
-                        key,
-                        val: Some(value),
-                        raw: from_utf8(&s[..eol_or_eq + i_nl + 1]),
-                    })
-                }
+                let p = PropWithCmt::parse(s);
+                self.skip_ln(p.next);
+                Some(p.to_item())
             }
         }
     }
