@@ -284,6 +284,30 @@ impl<'a> SectionWithCmt<'a> {
             raw: self.raw,
         }
     }
+
+    fn fmt_edit_value(&self, f: &mut fmt::Formatter<'_>, value: &str) -> Result<(), fmt::Error> {
+        if value == self.name.value {
+            write!(f, "{}", self.raw)
+        } else {
+            let cmt = self.cmt.unwrap_or("");
+            write!(f, "{}{}{}{}", self.name.pre, value, self.name.post, cmt)
+        }
+    }
+
+    pub fn edit_value(&'a self, value: &'a str) -> EditSection<'a> {
+        EditSection { section: self, value }
+    }
+}
+
+pub struct EditSection<'a> {
+    section: &'a SectionWithCmt<'a>,
+    value: &'a str,
+}
+
+impl<'a> fmt::Display for EditSection<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.section.fmt_edit_value(f, self.value)
+    }
 }
 
 #[cfg(test)]
@@ -379,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn test_edit_preserve() {
+    fn test_edit_prop_preserve() {
         let line_in = " key  =   value     # Some ; complicated # comment\nnext";
         let line_out = " key  =   new value     # Some ; complicated # comment";
 
@@ -435,4 +459,17 @@ mod tests {
         assert_eq!("[ ", s.name.pre);
         assert_eq!("  ]   ", s.name.post);
     }
+
+    #[test]
+    fn test_edit_section_preserve() {
+        let line_in = "[ bla  ]    # Some ; complicated # comment\nnext";
+        let line_out = "[ new value  ]    # Some ; complicated # comment";
+
+        let sec = SectionWithCmt::parse(line_in.as_bytes()).unwrap();
+        let act = format!("{}", sec.edit_value("new value"));
+
+        assert_eq!(line_out, &act);
+        assert_eq!("\nnext".as_bytes(), sec.next);
+    }
+
 }
