@@ -368,7 +368,7 @@ impl<'a> Iterator for Parser<'a> {
             // Property
             _ => {
                 let eol_or_eq = parse::find_nl_chr(s, b'=');
-                let (is_key_only, key_len)  = Self::parse_key_with_cmt(s, eol_or_eq);
+                let (is_key_only, key_len) = Self::parse_key_with_cmt(s, eol_or_eq);
                 let key = from_utf8(&s[..key_len]);
                 let key = trim(key);
                 if is_key_only {
