@@ -221,38 +221,6 @@ impl fmt::Display for Item<'_> {
     }
 }
 
-/* TODO: Delete this maybe */
-struct EditedValueItem<'a> {
-    item: &'a Item<'a>,
-    new_value: &'a str,
-}
-
-impl fmt::Display for EditedValueItem<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.item {
-            Item::Section { name, raw } => {
-                if *name == self.new_value {
-                    writeln!(f, "{}", self.item)
-                } else {
-                    writeln!(f, "{}", raw)
-                }
-            }
-            Item::Property { key, val, raw } => match *val {
-                Some(value) => {
-                    if value == self.new_value {
-                        writeln!(f, "{raw}")
-                    } else {
-                        writeln!(f, "{} = {}", key, self.new_value)
-                    }
-                }
-                None => writeln!(f, "{} = {}", key, self.new_value),
-            },
-            Item::Error(_) => Ok(()),
-            _ => write!(f, "{}", self.item),
-        }
-    }
-}
-
 /// Ini streaming parser.
 ///
 /// The whole document must be available before parsing starts.
