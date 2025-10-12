@@ -186,6 +186,9 @@ impl<'a> fmt::Display for EditProp<'a> {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+    use std::format;
+
     use super::*;
 
     #[test]
@@ -222,5 +225,66 @@ mod tests {
         assert_eq!("trim both", a.value);
         assert_eq!(" ", a.pre);
         assert_eq!(" ", a.post);
+    }
+
+    #[test]
+    fn test_parse_prop_simple() {
+        let line = "key = value";
+        let p = PropWithCmt::parse(line.as_bytes());
+        assert_eq!("", p.key.pre);
+        assert_eq!("key", p.key.value);
+        assert_eq!(" ", p.key.post);
+        let val = p.val.unwrap();
+        assert_eq!(" ", val.pre);
+        assert_eq!("value", val.value);
+        assert_eq!("", val.post);
+        assert!(p.cmt.is_none());
+        assert_eq!(line, p.raw);
+        assert!(p.next.is_empty());
+    }
+
+    #[test]
+    fn test_parse_prop_full() {
+        let line_nocmt = " key  =   value    ";
+        let cmt = "# ffff fffd ggd == ffdd # fddd ;ff gg ";
+        let line = format!("{line_nocmt}{cmt}");
+        let p = PropWithCmt::parse(line.as_bytes());
+
+        assert_eq!(" ", p.key.pre);
+        assert_eq!("key", p.key.value);
+        assert_eq!("  ", p.key.post);
+
+        let val = p.val.unwrap();
+        assert_eq!("   ", val.pre);
+        assert_eq!("value", val.value);
+        assert_eq!("    ", val.post);
+
+        assert_eq!(cmt, p.cmt.unwrap());
+        assert_eq!(line, p.raw);
+        assert!(p.next.is_empty());
+    }
+
+    #[test]
+    fn test_parse_multi_line() {
+        let line = "key=value#comment\nbla";
+        let p = PropWithCmt::parse(line.as_bytes());
+
+        assert_eq!("\nbla".as_bytes(), p.next);
+
+        assert_eq!("key", p.key.value);
+        assert_eq!("value", p.val.unwrap().value);
+        assert_eq!("#comment", p.cmt.unwrap());
+    }
+
+    #[test]
+    fn test_edit_preserve() {
+        let line_in = " key  =   value     # Some ; complicated # comment\nnext";
+        let line_out = " key  =   new value     # Some ; complicated # comment";
+
+        let p = PropWithCmt::parse(line_in.as_bytes());
+        let act = format!("{}", p.edit_value(Some("new value")));
+
+        assert_eq!(line_out, &act);
+        assert_eq!("\nnext".as_bytes(), p.next);
     }
 }
