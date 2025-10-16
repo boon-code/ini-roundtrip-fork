@@ -312,10 +312,11 @@ impl<'a> Iterator for Parser<'a> {
                         Ok(sec) => {
                             self.skip_ln(sec.next);
                             Some(sec.to_item())
-                        },
-                        Err(e) => {self.skip_ln(e.next);
-                            Some (Item::Error(e.error))
-                        },
+                        }
+                        Err(e) => {
+                            self.skip_ln(e.next);
+                            Some(Item::Error(e.error))
+                        }
                     }
                 } else {
                     self.section_ended = true;

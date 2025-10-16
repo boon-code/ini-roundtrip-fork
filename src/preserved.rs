@@ -1,5 +1,6 @@
 use core::{
     cmp::{max, min},
+    error::Error,
     fmt,
 };
 
@@ -218,6 +219,10 @@ impl<'a> PropWithCmt<'a> {
     pub fn edit_value(&'a self, value: Option<&'a str>) -> EditProp<'a> {
         EditProp { prop: self, value }
     }
+
+    pub fn get_value(&'a self) -> Option<&'a str> {
+        self.val.as_ref().map(|x| x.value)
+    }
 }
 
 pub struct EditProp<'a> {
@@ -236,6 +241,14 @@ pub struct SectionError<'a> {
     pub error: &'a str,
     pub next: &'a [u8],
 }
+
+impl<'a> fmt::Display for SectionError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Malformed section: {}", self.error)
+    }
+}
+
+impl<'a> Error for SectionError<'a> {}
 
 pub struct SectionWithCmt<'a> {
     pub name: ValuePreserve<'a>,
@@ -295,7 +308,10 @@ impl<'a> SectionWithCmt<'a> {
     }
 
     pub fn edit_value(&'a self, value: &'a str) -> EditSection<'a> {
-        EditSection { section: self, value }
+        EditSection {
+            section: self,
+            value,
+        }
     }
 }
 
@@ -471,5 +487,4 @@ mod tests {
         assert_eq!(line_out, &act);
         assert_eq!("\nnext".as_bytes(), sec.next);
     }
-
 }

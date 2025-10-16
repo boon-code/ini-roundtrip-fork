@@ -228,7 +228,7 @@ fn test_empty_strings() {
 }
 
 #[test]
-#[ignore]  // TODO: Most of these cases are now valid
+#[ignore] // TODO: Most of these cases are now valid
 fn test_syntax_errors() {
     check_err("[foo] ", 1);
     check_err("[foo] \r", 1);
