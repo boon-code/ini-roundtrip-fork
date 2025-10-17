@@ -100,11 +100,6 @@ fn from_utf8(v: &[u8]) -> &str {
     return str::from_utf8(v).expect("Impossible: Non-UTF8");
 }
 
-/// Trims ascii whitespace from the start and end of the string slice.
-fn trim(s: &str) -> &str {
-    s.trim_matches(|chr: char| chr.is_ascii_whitespace())
-}
-
 /// A parsed element of syntatic meaning
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Item<'a> {
@@ -313,19 +308,16 @@ impl<'a> Iterator for Parser<'a> {
             Some(b'[') => {
                 if self.section_ended {
                     self.section_ended = false;
-                    let i = parse::find_nl(s);
-                    if s[i - 1] != b']' {
-                        let error = from_utf8(&s[..i]);
-                        self.skip_ln(&s[i..]);
-                        return Some(Item::Error(error));
+                    match preserved::SectionWithCmt::parse(s) {
+                        Ok(sec) => {
+                            self.skip_ln(sec.next);
+                            Some(sec.to_item())
+                        }
+                        Err(e) => {
+                            self.skip_ln(e.next);
+                            Some(Item::Error(e.error))
+                        }
                     }
-                    let section = from_utf8(&s[1..i - 1]);
-                    let section = trim(section);
-                    self.skip_ln(&s[i..]);
-                    Some(Item::Section {
-                        name: section,
-                        raw: from_utf8(&s[..i]),
-                    })
                 } else {
                     self.section_ended = true;
                     Some(Item::SectionEnd)
@@ -333,38 +325,9 @@ impl<'a> Iterator for Parser<'a> {
             }
             // Property
             _ => {
-                let eol_or_eq = parse::find_nl_chr(s, b'=');
-                let key = from_utf8(&s[..eol_or_eq]);
-                let key = trim(key);
-                if s.get(eol_or_eq) != Some(&b'=') {
-                    // Key only case
-                    self.skip_ln(&s[eol_or_eq..]);
-                    if key.is_empty() {
-                        return Some(Item::Blank {
-                            raw: from_utf8(&s[..eol_or_eq]),
-                        });
-                    }
-                    Some(Item::Property {
-                        key,
-                        val: None,
-                        raw: from_utf8(&s[..eol_or_eq]),
-                    })
-                } else {
-                    // Key + value case
-                    let val_start = &s[eol_or_eq + 1..];
-
-                    let i = parse::find_nl(val_start);
-                    let value = from_utf8(&val_start[..i]);
-                    let value = trim(value);
-
-                    self.skip_ln(&val_start[i..]);
-
-                    Some(Item::Property {
-                        key,
-                        val: Some(value),
-                        raw: from_utf8(&s[..eol_or_eq + i + 1]),
-                    })
-                }
+                let p = preserved::PropWithCmt::parse(s);
+                self.skip_ln(p.next);
+                Some(p.to_item())
             }
         }
     }
@@ -373,5 +336,6 @@ impl<'a> Iterator for Parser<'a> {
 impl core::iter::FusedIterator for Parser<'_> {}
 
 mod parse;
+pub mod preserved;
 #[cfg(test)]
 mod tests;
