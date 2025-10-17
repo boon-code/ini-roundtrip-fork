@@ -6,25 +6,38 @@ use core::{
 
 use crate::{Item, from_utf8, parse};
 
+struct TrimSectionError {}
+impl Error for TrimSectionError {}
+impl fmt::Debug for TrimSectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Syntax error in section")
+    }
+}
+impl fmt::Display for TrimSectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Syntax error in section")
+    }
+}
+
 pub struct ValuePreserve<'a> {
     pub pre: &'a str,
     pub value: &'a str,
     pub post: &'a str,
 }
 
-impl<'a> fmt::Display for ValuePreserve<'a> {
+impl fmt::Display for ValuePreserve<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}{}", self.pre, self.value, self.post)
     }
 }
 
 impl<'a> ValuePreserve<'a> {
-    pub fn trim_from_utf8(slice: &'a [u8]) -> Self {
+    fn trim_from_utf8(slice: &'a [u8]) -> Self {
         let value = from_utf8(slice);
         Self::trim(value)
     }
 
-    pub fn trim_section_from_utf8(slice: &'a [u8]) -> Result<Self, ()> {
+    fn trim_section_from_utf8(slice: &'a [u8]) -> Result<Self, TrimSectionError> {
         let value = from_utf8(slice);
         Self::trim_section(value)
     }
@@ -54,7 +67,7 @@ impl<'a> ValuePreserve<'a> {
         }
     }
 
-    fn trim_section(txt: &'a str) -> Result<Self, ()> {
+    fn trim_section(txt: &'a str) -> Result<Self, TrimSectionError> {
         let pat = |chr: char| chr.is_ascii_whitespace();
 
         let trimmed_start = txt.trim_start_matches(pat);
@@ -75,7 +88,7 @@ impl<'a> ValuePreserve<'a> {
                 assert!(post_len <= txt.len());
                 assert!(pre_len + post_len + trimmed.len() == txt.len());
 
-                let val = Self::trim(&trimmed);
+                let val = Self::trim(trimmed);
 
                 let pre_len = pre_len + val.pre.len();
                 let post_len = post_len + val.post.len();
@@ -92,7 +105,7 @@ impl<'a> ValuePreserve<'a> {
                     post,
                 })
             }
-            _ => Err(()),
+            _ => Err(TrimSectionError {}),
         }
     }
 }
@@ -145,7 +158,7 @@ impl<'a> PropWithCmt<'a> {
         let maybe_nl = max(c1, c2);
 
         let nl = match slice.get(maybe_nl) {
-            Some(b'\n') | Some(b'\r') | None => maybe_nl,
+            Some(b'\n' | b'\r') | None => maybe_nl,
             _ => parse::find_nl(&slice[maybe_nl..]) + maybe_nl,
         };
 
@@ -182,11 +195,7 @@ impl<'a> PropWithCmt<'a> {
         if self.val.is_none() && self.key.value.is_empty() {
             Item::Blank { raw: self.raw }
         } else {
-            let val = if let Some(val) = self.val {
-                Some(val.value)
-            } else {
-                None
-            };
+            let val = self.val.map(|val| val.value);
             Item::Property {
                 key: self.key.value,
                 val,
@@ -230,7 +239,7 @@ pub struct EditProp<'a> {
     value: Option<&'a str>,
 }
 
-impl<'a> fmt::Display for EditProp<'a> {
+impl fmt::Display for EditProp<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.prop.fmt_edit_value(f, self.value)
     }
@@ -242,13 +251,13 @@ pub struct SectionError<'a> {
     pub next: &'a [u8],
 }
 
-impl<'a> fmt::Display for SectionError<'a> {
+impl fmt::Display for SectionError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Malformed section: {}", self.error)
     }
 }
 
-impl<'a> Error for SectionError<'a> {}
+impl Error for SectionError<'_> {}
 
 pub struct SectionWithCmt<'a> {
     pub name: ValuePreserve<'a>,
@@ -265,7 +274,7 @@ impl<'a> SectionWithCmt<'a> {
         let maybe_nl = max(c1, c2);
 
         let nl = match s.get(maybe_nl) {
-            Some(b'\n') | Some(b'\r') | None => maybe_nl,
+            Some(b'\n' | b'\r') | None => maybe_nl,
             _ => parse::find_nl(&s[maybe_nl..]) + maybe_nl,
         };
 
@@ -320,7 +329,7 @@ pub struct EditSection<'a> {
     value: &'a str,
 }
 
-impl<'a> fmt::Display for EditSection<'a> {
+impl fmt::Display for EditSection<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.section.fmt_edit_value(f, self.value)
     }
